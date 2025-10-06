@@ -136,16 +136,56 @@ def get_all_classes(tree , file_name = "test.py")->Tuple:
 
     return (class_methods_names , classes_method_contents)
 
+
+
+def get_all_imports(tree,file_name = "test.py"):
+    
+    all_imports  = [x for x in tree.body if isinstance(x,ast.Import) or isinstance(x,ast.ImportFrom)]
+    # all_imports_name = [x.name for x in all_imports]
+    all_imports_name = [ast.get_source_segment(code , x) for x in all_imports]
+    all_imports_lines = [x.lineno for x in all_imports]
+    
+    for i,chunks in enumerate(all_imports_name):
+        if chunks and file_name and all_imports_lines[i]:
+            chunk = {
+                "type":"imports",
+                "name":chunks.split(' ')[1],
+                "file":file_name,
+                "line":all_imports_lines[i],
+                "code": chunks
+            }
+
+            myuuid = uuid.uuid4()
+
+            embedding = model.embed_documents([f"{chunk['name']} {chunk['type']} {chunk['code']}"])[0]
+
+            collection.add(
+                ids = [f"{myuuid}"],
+                embeddings = embedding,
+                metadatas = [chunk]
+            )
+
+    return (all_imports , all_imports_name)
+
+
+
 # print(get_all_functions(tree)[0])
 
 
-get_all_functions(tree)
-get_all_classes(tree)
+# get_all_functions(tree)
+# get_all_classes(tree)
+get_all_imports(tree)
+query_embeddings = model.embed_query("imports")
 
-query_embeddings = model.embed_query("setup database")
 result = collection.query(query_embeddings=[query_embeddings],n_results = 2,include = ["metadatas","distances"])
 
 print(result)
+
+
+# for x in ast.walk(tree):
+    
+#     print(x)
+
 # if isinstance(item, ast.FunctionDef):
 #     chunks.append({
 #         'type': 'method',
