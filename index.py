@@ -5,6 +5,10 @@ import chromadb
 from dotenv import load_dotenv
 import numpy as np
 import uuid
+import os
+import subprocess
+import shutil
+import time
 load_dotenv()
 
 
@@ -12,7 +16,7 @@ chroma_client = chromadb.Client()
 collection = chroma_client.create_collection(name="latest")
 
 def getEmbeddingModel():
-    model = CohereEmbeddings(model = "embed-v4.0")
+    model = CohereEmbeddings(model = "embed-v4.0",max_retries=3)
     return model
 
 model = getEmbeddingModel()
@@ -33,11 +37,11 @@ class Homo:
         pass
 """
 
+def read_file(path):
+    with open(path) as f:
+        reader = f.read()
+    return reader
 
-with open("test.py") as f:
-    reader = f.read()
-
-code = reader
 
 
 tree = ast.parse(code)
@@ -88,6 +92,7 @@ def get_all_functions(tree , file_name = "test.py")->Tuple:
                 embeddings = embedding,
                 metadatas = [chunk]
             )
+            time.sleep(5)
 
     return (functions_name_list , function_contents)
 
@@ -131,6 +136,8 @@ def get_all_classes(tree , file_name = "test.py")->Tuple:
                         embeddings = embedding,
                         metadatas = [chunk]
                     )
+                    time.sleep(5)
+
 
     # classes_list = [x.name for x in tree.body if isinstance(x,ast.ClassDef)] 
 
@@ -145,8 +152,12 @@ def get_all_imports(tree,file_name = "test.py"):
     all_imports_name = [ast.get_source_segment(code , x) for x in all_imports]
     all_imports_lines = [x.lineno for x in all_imports]
     
+    embedding_document_array = []
+    chunk_array = []
+
     for i,chunks in enumerate(all_imports_name):
         if chunks and file_name and all_imports_lines[i]:
+            
             chunk = {
                 "type":"imports",
                 "name":chunks.split(' ')[1],
@@ -155,44 +166,64 @@ def get_all_imports(tree,file_name = "test.py"):
                 "code": chunks
             }
 
+            chunk_array.append(chunk)
+
+            embedding_document_string = f"{chunk['name']} {chunk['type']} {chunk['code']}"
+
+            embedding_document_array.append(embedding_document_string)
+
+        embeddings = model.embed_documents(embedding_document_array)
+        for i in range(len(chunk_array)):
             myuuid = uuid.uuid4()
-
-            embedding = model.embed_documents([f"{chunk['name']} {chunk['type']} {chunk['code']}"])[0]
-
             collection.add(
                 ids = [f"{myuuid}"],
-                embeddings = embedding,
-                metadatas = [chunk]
+                embeddings = embeddings[i],
+                metadatas = [chunk_array[i]]
             )
 
     return (all_imports , all_imports_name)
 
 
 
-# print(get_all_functions(tree)[0])
 
-
-# get_all_functions(tree)
-# get_all_classes(tree)
-get_all_imports(tree)
-query_embeddings = model.embed_query("imports")
-
-result = collection.query(query_embeddings=[query_embeddings],n_results = 2,include = ["metadatas","distances"])
-
-print(result)
 
 
 # for x in ast.walk(tree):
     
 #     print(x)
+repo = input("Enter the name of the repository: ")
 
-# if isinstance(item, ast.FunctionDef):
-#     chunks.append({
-#         'type': 'method',
-#         'name': f"{class_name}.{item.name}",
-#         'class': class_name,
-#         'file': filepath,
-#         'line': item.lineno,
-#         'docstring': ast.get_docstring(item) or '',
-#         'code': ast.get_source_segment(code, item)
-#     })
+# Reset temp_clone
+if os.path.exists('temp_clone'):
+    shutil.rmtree('temp_clone')
+os.mkdir("temp_clone")
+
+# Clone repo
+os.chdir("temp_clone")
+subprocess.run(["git", "clone", repo])
+
+# Get repo directory name (git clones into a folder named after the repo)
+repo_name = os.listdir(".")[0]
+os.chdir(repo_name)
+
+# Walk and list files
+ignore_dirs = {'.git', '__pycache__'}
+
+for root, dirs, files in os.walk(os.getcwd()):
+    dirs[:] = [d for d in dirs if d not in ignore_dirs]
+    for file_name in files:
+        print(os.path.join(root, file_name))
+        code = read_file(os.path.join(root, file_name))
+        tree = ast.parse(code)
+        get_all_classes(tree,file_name)
+        get_all_functions(tree,file_name)
+        get_all_imports(tree,file_name)
+
+query_embedd = model.embed_query("Which function contains imports logic")
+
+results = collection.query(
+    query_embeddings=query_embedd,
+    n_results=5
+)
+
+print(results)
