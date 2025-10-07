@@ -70,6 +70,9 @@ def get_all_functions(tree , file_name = "test.py")->Tuple:
     # Fetch function line starts and ends from the ast 
     functions_lines_index = [get_function_line_start(x) for x in functions_list] 
 
+    chunk_array = []
+    embedding_document_array = []
+
     # Fetch the contents of each function
     for function in range(len(functions_name_list)):
         chunk = {
@@ -81,18 +84,21 @@ def get_all_functions(tree , file_name = "test.py")->Tuple:
             "code":function_contents[function] or " "
         }
 
-        print("Function chunk")
-        print(chunk)
+        embedding_document_array.append(f"{chunk['name']} {chunk['docstring']} {chunk['code']}")
+        chunk_array.append(chunk)
 
+
+    if(len(embedding_document_array) == 0):
+        print("functions")
+        return ()
+    embeddings = model.embed_documents(embedding_document_array)
+    for i in range(len(chunk_array)):
         myuuid = uuid.uuid4()
-        if function_contents[function]:
-            embedding = model.embed_documents([f"{chunk['name']} {chunk['docstring']} {chunk['code']}"])[0]
-            collection.add(
-                ids = [f"{myuuid}"],
-                embeddings = embedding,
-                metadatas = [chunk]
-            )
-            time.sleep(5)
+        collection.add(
+            ids = [f"{myuuid}"],
+            embeddings = embeddings[i],
+            metadatas = [chunk_array[i]]
+        )
 
     return (functions_name_list , function_contents)
 
@@ -109,6 +115,9 @@ def get_all_classes(tree , file_name = "test.py")->Tuple:
     classes_method_contents = [[ast.get_source_segment(code ,y) for y in x] for x in class_methods]
 
     class_methods_names = [[str(x.name + "." + y.name) for y in x.body if isinstance(y,ast.FunctionDef)] for x in classes_list]
+
+    chunk_array = []
+    embedding_document_array = []
 
     for i in range(len(classes_method_contents)):
         if len(classes_method_contents[i]) == 0:
@@ -127,18 +136,21 @@ def get_all_classes(tree , file_name = "test.py")->Tuple:
                         "docstring":ast.get_docstring(class_methods[i][j]) or " ",
                         "code":content or " "
                     }
+                    chunk_array.append(chunk)
+                    embedding_document_array.append(f"{chunk['name']} {chunk['docstring']} {chunk['code']}")
 
-                    embedding = model.embed_documents([f"{chunk['name']} {chunk['docstring']} {chunk['code']}"])[0]
-                    print(chunk)
-
-                    collection.add(
-                        ids = [f"{myuuid}"],
-                        embeddings = embedding,
-                        metadatas = [chunk]
-                    )
-                    time.sleep(5)
-
-
+    if(len(embedding_document_array) == 0):
+        print("classes")
+        return ()
+    embeddings = model.embed_documents(embedding_document_array)
+    print(f"Embedding array length: {len(embedding_document_array)}")
+    for i in range(len(chunk_array)):
+        myuuid = uuid.uuid4()
+        collection.add(
+            ids = [f"{myuuid}"],
+            embeddings = embeddings[i],
+            metadatas = [chunk_array[i]]
+        )
     # classes_list = [x.name for x in tree.body if isinstance(x,ast.ClassDef)] 
 
     return (class_methods_names , classes_method_contents)
@@ -172,14 +184,17 @@ def get_all_imports(tree,file_name = "test.py"):
 
             embedding_document_array.append(embedding_document_string)
 
-        embeddings = model.embed_documents(embedding_document_array)
-        for i in range(len(chunk_array)):
-            myuuid = uuid.uuid4()
-            collection.add(
-                ids = [f"{myuuid}"],
-                embeddings = embeddings[i],
-                metadatas = [chunk_array[i]]
-            )
+    if(len(embedding_document_array) == 0):
+        print("Imports")
+        return ()
+    embeddings = model.embed_documents(embedding_document_array)
+    for i in range(len(chunk_array)):
+        myuuid = uuid.uuid4()
+        collection.add(
+            ids = [f"{myuuid}"],
+            embeddings = embeddings[i],
+            metadatas = [chunk_array[i]]
+        )
 
     return (all_imports , all_imports_name)
 
@@ -223,7 +238,7 @@ query_embedd = model.embed_query("Which function contains imports logic")
 
 results = collection.query(
     query_embeddings=query_embedd,
-    n_results=5
+    n_results=2
 )
 
 print(results)
