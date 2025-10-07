@@ -206,35 +206,39 @@ def get_all_imports(tree,file_name = "test.py"):
 # for x in ast.walk(tree):
     
 #     print(x)
-repo = input("Enter the name of the repository: ")
+# repo = input("Enter the name of the repository: ")
 
-# Reset temp_clone
-if os.path.exists('temp_clone'):
-    shutil.rmtree('temp_clone')
-os.mkdir("temp_clone")
+# # Reset temp_clone
+# if os.path.exists('temp_clone'):
+#     shutil.rmtree('temp_clone')
+# os.mkdir("temp_clone")
 
-# Clone repo
+# # Clone repo
 os.chdir("temp_clone")
-subprocess.run(["git", "clone", repo])
+# subprocess.run(["git", "clone", repo])
 
 # Get repo directory name (git clones into a folder named after the repo)
 repo_name = os.listdir(".")[0]
 os.chdir(repo_name)
 
 # Walk and list files
-ignore_dirs = {'.git', '__pycache__'}
+ignore_dirs = {'.git', '__pycache__','saved_model','steps/__pycache__','pipelines/__pycache__'}
 
 for root, dirs, files in os.walk(os.getcwd()):
     dirs[:] = [d for d in dirs if d not in ignore_dirs]
     for file_name in files:
-        print(os.path.join(root, file_name))
-        code = read_file(os.path.join(root, file_name))
+        if not file_name.endswith(".py"):
+            continue
+        path = os.path.join(root, file_name)
+        print(path)
+        code = read_file(path)
         tree = ast.parse(code)
-        get_all_classes(tree,file_name)
-        get_all_functions(tree,file_name)
-        get_all_imports(tree,file_name)
+        get_all_classes(tree, file_name)
+        get_all_functions(tree, file_name)
+        get_all_imports(tree, file_name)
+        time.sleep(10)
 
-query_embedd = model.embed_query("Which function contains imports logic")
+query_embedd = model.embed_query("Which function contains train pipeline logic")
 
 results = collection.query(
     query_embeddings=query_embedd,
